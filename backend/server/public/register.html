@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+  <meta charset="UTF-8" />
+  <title>ثبت‌نام</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="form-container">
+    <h2>ثبت‌نام</h2>
+    <form id="registerForm">
+      <input type="text" id="username" placeholder="نام کاربری" required />
+      <input type="password" id="password" placeholder="رمز عبور" required />
+      <input type="text" id="arduinoIp" placeholder="آی‌پی آردوینو" required />
+      <input type="text" id="arduinoMac" placeholder="مک آدرس آردوینو" required />
+      <button type="submit">ثبت‌نام</button>
+      <p class="error" id="registerError"></p>
+    </form>
+    <p><a href="login.html">ورود</a></p>
+  </div>
+  <script src="js/register.js"></script>
+</body>
+</html>
