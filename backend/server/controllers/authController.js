@@ -59,7 +59,12 @@ const login = async (req, res) => {
 
     // تولید توکن
     const token = jwt.sign(
-      { userId: user._id, username: user.username },
+      { 
+        userId: user._id, 
+        username: user.username,
+        arduinoMAC: user.arduinoMAC,
+        arduinoIP: user.arduinoIP, 
+      },
       process.env.JWT_SECRET,
       { expiresIn: '1d' }
     );
@@ -67,12 +72,6 @@ const login = async (req, res) => {
     res.status(200).json({
       message: 'ورود موفقیت‌آمیز بود.',
       token,
-      user: {
-        id: user._id,
-        username: user.username,
-        arduinoIP: user.arduinoIP,
-        arduinoMAC: user.arduinoMAC,
-      },
     });
   } catch (error) {
     res.status(500).json({ message: 'خطا در ورود.', error });

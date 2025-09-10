@@ -5,6 +5,24 @@ document.addEventListener('DOMContentLoaded', () => {
     return;
   }
 
+  // 📌 decode jwt برای گرفتن mac
+  function parseJwt (token) {
+    try {
+      return JSON.parse(atob(token.split('.')[1]));
+    } catch (e) {
+      return null;
+    }
+  }
+  const payload = parseJwt(token);
+  if (!payload || !payload.arduinoMAC) {
+    alert("❌ توکن معتبر نیست، دوباره لاگین کنید");
+    localStorage.removeItem('token');
+    window.location.href = '/login.html';
+    return;
+  }
+
+
+
   const deviceList = document.getElementById('deviceList');
   const popupOverlay = document.getElementById('popupOverlay');
   const deviceTypeSelect = document.getElementById('deviceType');
@@ -15,6 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let deviceTypeMap = {};
   window.deviceMapByMac = {};
   window.token = token; // ⬅️ سراسری برای استفاده در sendCommand و controlStepper
+  window.arduinoMAC = payload.arduinoMAC.toUpperCase(); // ⬅️ اینو همیشه استفاده می‌کنیم
 
   addDeviceBtn.addEventListener('click', async () => {
     await fetchDeviceTypes();
@@ -122,8 +141,8 @@ document.addEventListener('DOMContentLoaded', () => {
           case 'RELAY':
             controlsHTML = `
               <div class="flex space-x-2">
-                <button class="bg-green-500 text-white px-4 py-1 rounded" onclick="sendCommand('${macKey}', ${device.pins[0].pin}, 1)">روشن</button>
-                <button class="bg-gray-500 text-white px-4 py-1 rounded" onclick="sendCommand('${macKey}', ${device.pins[0].pin}, 0)">خاموش</button>
+                <button class="bg-green-500 text-white px-4 py-1 rounded" onclick="sendCommand(${device.pins[0].pin}, 1)">روشن</button>
+                <button class="bg-gray-500 text-white px-4 py-1 rounded" onclick="sendCommand(${device.pins[0].pin}, 0)">خاموش</button>
               </div>
             `;
             break;
@@ -150,8 +169,8 @@ document.addEventListener('DOMContentLoaded', () => {
             controlsHTML = `
               <div class="flex flex-col space-y-2">
                 <div class="flex items-center space-x-2">
-                  <button onclick="controlStepper('${macKey}', ${A}, ${B}, ${A_}, ${B_}, 1)" class="bg-green-500 text-white px-3 py-1 rounded">+</button>
-                  <button onclick="controlStepper('${macKey}', ${A}, ${B}, ${A_}, ${B_}, -1)" class="bg-red-500 text-white px-3 py-1 rounded">-</button>
+                  <button onclick="controlStepper(${A}, ${B}, ${A_}, ${B_}, 1)" class="bg-green-500 text-white px-3 py-1 rounded">+</button>
+                  <button onclick="controlStepper(${A}, ${B}, ${A_}, ${B_}, -1)" class="bg-red-500 text-white px-3 py-1 rounded">-</button>
                 </div>
                 <div class="text-xs text-gray-500">با استفاده از دکمه‌های بالا جهت/سرعت تغییر می‌کند</div>
               </div>
@@ -268,8 +287,7 @@ socket.on('sensor-data', ({ mac, type, data }) => {
 });
 
 // ⬇⬇ اصلاح شده
-function sendCommand(mac, pin, value) {
-  const macKey = mac.toUpperCase();
+function sendCommand(pin, value) {
   fetch('/api/arduino/send-command', {
     method: 'POST',
     headers: {
@@ -277,7 +295,7 @@ function sendCommand(mac, pin, value) {
       Authorization: `Bearer ${window.token}`,
     },
     body: JSON.stringify({
-      mac: macKey,
+      mac: window.arduinoMAC,
       command: { action: 'digitalWrite', pin, value }
     })
   }).then(res => res.json())
@@ -290,8 +308,7 @@ function sendCommand(mac, pin, value) {
     });
 }
 
-function controlStepper(mac, A, B, A_, B_, direction) {
-  const macKey = mac.toUpperCase();
+function controlStepper(A, B, A_, B_, direction) {
   fetch('/api/arduino/send-command', {
     method: 'POST',
     headers: {
@@ -299,7 +316,7 @@ function controlStepper(mac, A, B, A_, B_, direction) {
       Authorization: `Bearer ${window.token}`,
     },
     body: JSON.stringify({
-      mac: macKey,
+      mac: window.arduinoMAC,
       command: { action: 'stepper', pins: { A, B, A_, B_ }, direction }
     })
   }).then(res => res.json())
@@ -311,3 +328,4 @@ function controlStepper(mac, A, B, A_, B_, direction) {
       alert('❌ ارتباط با سرور قطع شده');
     });
 }
+
