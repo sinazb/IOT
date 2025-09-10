@@ -2,10 +2,6 @@ module.exports = [
     {
       deviceType: "light",
       pinNames: ["signal"]
-    },
-    {
-      deviceType: "lm35",
-      pinNames: ["out"]
     },  
     {
       deviceType: "buzzer",
@@ -13,7 +9,7 @@ module.exports = [
     },
     {
       deviceType: "DHT11",
-      pinNames: ["out"]
+      fixedPin: 7
     },
     {
       deviceType: "stepper",

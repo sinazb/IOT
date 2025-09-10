@@ -1,35 +1,41 @@
 const express = require('express');
-const router = express.Router();
+const {
+  sendCommand,
+  getCommands,
+  receiveSensorData,
+  ping
+} = require('../controllers/arduinoController');
 
-// مثال: بازگرداندن دستور ساده برای دستگاه خاص
-router.get('/commands', (req, res) => {
-  // نمونه خروجی: این رو میشه از دیتابیس گرفت یا براساس وضعیت کاربر
-  res.send("lamp_func(7,1)");
-});
+module.exports = (io) => {
+  const router = express.Router();
 
-// دریافت مقدار دما از آردوینو
-router.post('/lm35', (req, res) => {
-  const temperature = req.body.temp;
-  console.log("📡 دمای دریافت‌شده:", temperature);
+  // آردوینو فرمان می‌گیرد
+  router.get('/commands', (req, res) => getCommands(req, res));
 
-  // اینجا می‌تونی در دیتابیس ذخیره کنی یا ارسال کنی به کلاینت (مثلاً از طریق Socket.io)
+  // داشبورد فرمان می‌فرستد
+  router.post('/send-command', (req, res) => {
+    console.log("📥 Command received at /api/arduino/send-command");
+    console.log("👤 User:", req.user ? req.user.id : "Unknown");
+    console.log("📋 Headers:", req.headers);
+    console.log("📦 Body:", req.body);
 
-  res.sendStatus(200);
-});
+    const { mac, command } = req.body;
+    if (!mac || !command) {
+      console.log("❌ Missing MAC or command in request");
+      return res.status(400).json({ success: false, message: 'MAC یا command خالی است' });
+    }
 
-router.post('/data', async (req, res) => {
-  const { mac, type, data } = req.body;
+    console.log("✅ Valid request received");
+    console.log("📡 MAC:", mac);
+    console.log("⚡ Command:", command);
 
-  try {
-    // مثلاً ذخیره یا انتشار برای داشبورد
-    io.emit('sensor-data', { mac, type, data });
+    sendCommand(req, res, io);
+  });
 
-    res.json({ success: true, message: 'داده دریافت شد' });
-  } catch (err) {
-    console.error('خطا در دریافت داده سنسور:', err);
-    res.status(500).json({ success: false });
-  }
-});
+  // آردوینو دیتا می‌فرستد
+  router.post('/data', (req, res) => receiveSensorData(req, res, io));
 
+  router.get('/ping', ping);
 
-module.exports = router;
+  return router;
+};

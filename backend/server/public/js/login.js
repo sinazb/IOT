@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (res.ok) {
         localStorage.setItem('token', data.token);
         alert('ورود موفق!');
-        window.location.href = '/dashboard.html'; // در مرحله بعد می‌سازیمش
+        window.location.href = '/dashboard.html';
       } else {
         alert(data.message || 'نام کاربری یا رمز عبور اشتباه است');
       }

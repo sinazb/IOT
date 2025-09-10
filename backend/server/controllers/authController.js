@@ -76,6 +76,7 @@ const login = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: 'خطا در ورود.', error });
+    console.log(error)
   }
 };
 

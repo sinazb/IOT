@@ -13,7 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const addDeviceBtn = document.getElementById('addDeviceBtn');
 
   let deviceTypeMap = {};
-  window.deviceMapByMac = {}; // ⬅ تعریف سراسری برای WebSocket
+  window.deviceMapByMac = {};
+  window.token = token; // ⬅️ سراسری برای استفاده در sendCommand و controlStepper
 
   addDeviceBtn.addEventListener('click', async () => {
     await fetchDeviceTypes();
@@ -45,7 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       deviceTypeSelect.dispatchEvent(new Event('change'));
     } catch (err) {
-      console.error(err);
+      console.error("❌ fetchDeviceTypes error:", err);
       alert('خطا در دریافت نوع دستگاه‌ها');
     }
   }
@@ -54,6 +55,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const selected = deviceTypeSelect.value;
     const pinNames = deviceTypeMap[selected] || [];
     pinFieldsContainer.innerHTML = '';
+
+    if (selected.toUpperCase() === 'DHT11') {
+      pinFieldsContainer.style.display = 'none';
+      return;
+    }
+
+    pinFieldsContainer.style.display = 'block';
     pinNames.forEach(pinName => {
       const label = document.createElement('label');
       label.textContent = `پین ${pinName}:`;
@@ -76,11 +84,18 @@ document.addEventListener('DOMContentLoaded', () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
+      if (!res.ok) {
+        console.error("❌ fetchDevices response error:", data);
+        alert(data.message || 'خطا در دریافت لیست دستگاه‌ها');
+        return;
+      }
+      
       deviceList.innerHTML = '';
       deviceMapByMac = {};
 
       data.devices.forEach(device => {
-        deviceMapByMac[device.mac] = device;
+        const macKey = device.mac ? device.mac.toUpperCase() : `NO-MAC-${device._id}`;
+        deviceMapByMac[macKey] = device;
 
         const card = document.createElement('div');
         card.className = 'bg-white p-5 rounded-lg shadow border flex flex-col space-y-3 transition hover:shadow-lg';
@@ -101,15 +116,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const pinsHTML = `<div class="text-sm text-gray-700"><strong>پین‌ها:</strong> ${pinsText}</div>`;
 
         let controlsHTML = '';
-
         switch (device.deviceType.toUpperCase()) {
           case 'LIGHT':
           case 'BUZZER':
           case 'RELAY':
             controlsHTML = `
               <div class="flex space-x-2">
-                <button class="bg-green-500 text-white px-4 py-1 rounded" onclick="sendCommand('${device.mac}', ${device.pins[0].pin}, 1)">روشن</button>
-                <button class="bg-gray-500 text-white px-4 py-1 rounded" onclick="sendCommand('${device.mac}', ${device.pins[0].pin}, 0)">خاموش</button>
+                <button class="bg-green-500 text-white px-4 py-1 rounded" onclick="sendCommand('${macKey}', ${device.pins[0].pin}, 1)">روشن</button>
+                <button class="bg-gray-500 text-white px-4 py-1 rounded" onclick="sendCommand('${macKey}', ${device.pins[0].pin}, 0)">خاموش</button>
               </div>
             `;
             break;
@@ -136,8 +150,8 @@ document.addEventListener('DOMContentLoaded', () => {
             controlsHTML = `
               <div class="flex flex-col space-y-2">
                 <div class="flex items-center space-x-2">
-                  <button onclick="controlStepper('${device.mac}', ${A}, ${B}, ${A_}, ${B_}, 1)" class="bg-green-500 text-white px-3 py-1 rounded">+</button>
-                  <button onclick="controlStepper('${device.mac}', ${A}, ${B}, ${A_}, ${B_}, -1)" class="bg-red-500 text-white px-3 py-1 rounded">-</button>
+                  <button onclick="controlStepper('${macKey}', ${A}, ${B}, ${A_}, ${B_}, 1)" class="bg-green-500 text-white px-3 py-1 rounded">+</button>
+                  <button onclick="controlStepper('${macKey}', ${A}, ${B}, ${A_}, ${B_}, -1)" class="bg-red-500 text-white px-3 py-1 rounded">-</button>
                 </div>
                 <div class="text-xs text-gray-500">با استفاده از دکمه‌های بالا جهت/سرعت تغییر می‌کند</div>
               </div>
@@ -163,7 +177,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         deviceList.appendChild(card);
       });
-    } catch {
+    } catch (err) {
+      console.error("❌ fetchDevices error:", err);
       alert('خطا در دریافت لیست دستگاه‌ها');
     }
   }
@@ -172,9 +187,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await fetch(`/api/devices/${id}`, {
         method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
         const data = await res.json();
@@ -189,11 +202,17 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     const deviceType = deviceTypeSelect.value;
     const name = document.getElementById('deviceName').value;
-    const inputs = pinFieldsContainer.querySelectorAll('input');
-    const pins = Array.from(inputs).map(input => ({
-      name: input.name,
-      pin: input.value,
-    }));
+
+    let pins = [];
+    if (deviceType.toUpperCase() === 'DHT11') {
+      pins = [{ name: 'out', pin: 7 }];
+    } else {
+      const inputs = pinFieldsContainer.querySelectorAll('input');
+      pins = Array.from(inputs).map(input => ({
+        name: input.name,
+        pin: input.value,
+      }));
+    }
 
     try {
       const res = await fetch('/api/devices/add', {
@@ -220,17 +239,18 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchDevices();
 });
 
-// خروج از حساب
+// خروج
 function logout() {
   localStorage.removeItem('token');
   window.location.href = '/login.html';
 }
 
-// اتصال WebSocket
+// WebSocket
 const socket = io();
 
 socket.on('sensor-data', ({ mac, type, data }) => {
-  const device = deviceMapByMac[mac];
+  const macKey = mac.toUpperCase();
+  const device = deviceMapByMac[macKey];
   if (!device) return;
 
   switch (type.toUpperCase()) {
@@ -238,7 +258,6 @@ socket.on('sensor-data', ({ mac, type, data }) => {
       const tempEl = document.getElementById(`temp-${device._id}`);
       if (tempEl) tempEl.textContent = data.temperature;
       break;
-
     case 'DHT11':
       const tempElDHT = document.getElementById(`temp-${device._id}`);
       const humElDHT = document.getElementById(`hum-${device._id}`);
@@ -248,52 +267,47 @@ socket.on('sensor-data', ({ mac, type, data }) => {
   }
 });
 
-// کنترل دستگاه‌های دیجیتال
+// ⬇⬇ اصلاح شده
 function sendCommand(mac, pin, value) {
+  const macKey = mac.toUpperCase();
   fetch('/api/arduino/send-command', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Authorization: `Bearer ${window.token}`,
     },
     body: JSON.stringify({
-      mac,
-      command: {
-        action: 'digitalWrite',
-        pin,
-        value
-      }
+      mac: macKey,
+      command: { action: 'digitalWrite', pin, value }
     })
   }).then(res => res.json())
     .then(data => {
-      if (!data.success) {
-        alert(data.message || 'خطا در ارسال فرمان');
-      }
-    }).catch(() => {
+      console.log("📤 Command response:", data);
+      if (!data.success) alert(data.message || 'خطا در ارسال فرمان');
+    }).catch(err => {
+      console.error("❌ sendCommand error:", err);
       alert('❌ خطا در ارتباط با سرور');
     });
 }
 
-// کنترل استپر موتور
 function controlStepper(mac, A, B, A_, B_, direction) {
+  const macKey = mac.toUpperCase();
   fetch('/api/arduino/send-command', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Authorization: `Bearer ${window.token}`,
     },
     body: JSON.stringify({
-      mac,
-      command: {
-        action: 'stepper',
-        pins: { A, B, A_, B_ },
-        direction
-      }
+      mac: macKey,
+      command: { action: 'stepper', pins: { A, B, A_, B_ }, direction }
     })
   }).then(res => res.json())
     .then(data => {
-      if (!data.success) {
-        alert(data.message || 'خطا در ارسال فرمان به استپر');
-      }
-    }).catch(() => {
+      console.log("📤 Stepper response:", data);
+      if (!data.success) alert(data.message || 'خطا در ارسال فرمان به استپر');
+    }).catch(err => {
+      console.error("❌ controlStepper error:", err);
       alert('❌ ارتباط با سرور قطع شده');
     });
 }
