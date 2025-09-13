@@ -54,6 +54,7 @@ exports.receiveSensorData = (req, res, io) => {
     if (!mac || !type) return res.status(400).json({ success: false, message: 'mac و type لازم است' });
 
     // انتشار برای داشبورد
+    console.log("📡 Emitting sensor-data:", mac, type, data);
     io.emit('sensor-data', { mac, type, data });
 
     return res.json({ success: true });

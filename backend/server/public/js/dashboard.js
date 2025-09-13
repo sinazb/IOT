@@ -113,8 +113,10 @@ document.addEventListener('DOMContentLoaded', () => {
       deviceMapByMac = {};
 
       data.devices.forEach(device => {
-        const macKey = device.mac ? device.mac.toUpperCase() : `NO-MAC-${device._id}`;
-        deviceMapByMac[macKey] = device;
+        const macKey = window.arduinoMAC.toUpperCase();
+        if (!deviceMapByMac[macKey]) deviceMapByMac[macKey] = [];
+        deviceMapByMac[macKey].push(device);
+        console.log("📌 Registered device in map:", macKey, device);
 
         const card = document.createElement('div');
         card.className = 'bg-white p-5 rounded-lg shadow border flex flex-col space-y-3 transition hover:shadow-lg';
@@ -265,13 +267,24 @@ function logout() {
 }
 
 // WebSocket
-const socket = io();
+const socket = io('/', { transports: ['websocket'] });
+socket.on('connect', () => {
+  console.log("✅ Socket connected:", socket.id);
+});
+socket.on('disconnect', () => {
+  console.log("❌ Socket disconnected");
+});
 
 socket.on('sensor-data', ({ mac, type, data }) => {
   const macKey = mac.toUpperCase();
-  const device = deviceMapByMac[macKey];
-  if (!device) return;
-
+  console.log("📡 Incoming sensor-data:", macKey, type, data);
+  const devices = deviceMapByMac[macKey];
+  if (!devices || devices.length === 0){
+    console.warn("⚠️ No devices found for MAC:", macKey);
+    return;
+  }
+  
+  devices.forEach(device => {
   switch (type.toUpperCase()) {
     case 'LM35':
       const tempEl = document.getElementById(`temp-${device._id}`);
@@ -284,6 +297,7 @@ socket.on('sensor-data', ({ mac, type, data }) => {
       if (humElDHT) humElDHT.textContent = data.humidity;
       break;
   }
+});
 });
 
 // ⬇⬇ اصلاح شده

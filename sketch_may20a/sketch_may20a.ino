@@ -1,7 +1,11 @@
 #include <SPI.h>
 #include <Ethernet.h>
 #include <ArduinoJson.h>
+#include <DFRobot_DHT11.h>
+DFRobot_DHT11 DHT;
 
+int tmp = 25;
+int hum = 30;
 // ------------------- شبکه -------------------
 byte macHW[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };        // مک آردوینو
 const char MAC_STR[] = "DE:AD:BE:EF:FE:ED";                    // برای ارتباط با سرور
@@ -80,14 +84,16 @@ bool httpRequest(const String& method, const String& path, const String& body, S
   }
 }
 
-void postSensorMock() {
-  // داده تستی (می‌تونی بعداً واقعا DHT بخونی)
+void postSensorDHT() {
+  DHT.read(DHT_PIN);
+  tmp = DHT.temperature;
+  hum = DHT.humidity;
   StaticJsonDocument<256> doc;
   doc["mac"]  = MAC_STR;
   doc["type"] = "DHT11";
   JsonObject data = doc.createNestedObject("data");
-  data["temperature"] = 25;
-  data["humidity"]    = 60;
+  data["temperature"] = tmp;
+  data["humidity"]    = hum;
 
   String body;
   serializeJson(doc, body);
@@ -99,53 +105,101 @@ void postSensorMock() {
     Serial.println("❌ Sensor POST failed");
   }
 }
-
 void handleDigitalWrite(JsonObject cmd) {
   int pin = cmd["pin"] | -1;
   int value = cmd["value"] | 0;
   if (pin < 0) return;
   pinMode(pin, OUTPUT);
-  digitalWrite(pin, value ? HIGH : LOW);
+  if(value == 1)
+  {digitalWrite(pin,HIGH);}
+  else
+  {digitalWrite(pin,LOW);}
   Serial.print("➡ digitalWrite pin "); Serial.print(pin);
   Serial.print(" = "); Serial.println(value);
 }
-
+int speed = 0;
+int A  = -1;
+int B  =  -1;
+int A_ = -1;
+int B_ = -1;
+int dir = 0;
 void handleStepper(JsonObject cmd) {
   JsonObject pins = cmd["pins"];
-  int A  = pins["A"]  | -1;
-  int B  = pins["B"]  | -1;
-  int A_ = pins["A_"] | -1;
-  int B_ = pins["B_"] | -1;
-  int dir = cmd["direction"] | 1;
+  A  = pins["A"]  | -1;
+  B  = pins["B"]  | -1;
+  A_ = pins["A_"] | -1;
+  B_ = pins["B_"] | -1;
+  dir = cmd["direction"] | 0;
+  if(!(speed == 10 && dir > 0) && !(speed == -10 && dir < 0))
+  speed += dir;
+  Serial.print("➡ stepper dir="); Serial.println(dir);
+  Serial.print("➡ stepper speed="); Serial.println(speed);
 
-  if (A<0 || B<0 || A_<0 || B_<0) return;
+  }
+  int stepperPhase = 0;
+  void nextPhase()
+  {
+    if(speed == 0) return;
+    if(speed > 0) { stepperPhase = (stepperPhase + 3) % 4 ;}
+    if(speed < 0) { stepperPhase = (stepperPhase + 1) % 4 ;}
+  }
+  void updateStepper()
+  {
+    if (A<0 || B<0 || A_<0 || B_<0 || speed == 0) return;
 
   pinMode(A, OUTPUT); pinMode(B, OUTPUT);
   pinMode(A_, OUTPUT); pinMode(B_, OUTPUT);
 
-  // نمونه حرکت کوتاه (میتونی بعداً دقیق‌تر کنی)
-  for (int i = 0; i < 100; i++) {
+    switch(stepperPhase) {
+    case 0:
     digitalWrite(A,  HIGH);
     digitalWrite(B,  LOW);
-    digitalWrite(A_, HIGH);
+    digitalWrite(A_, LOW);
     digitalWrite(B_, LOW);
-    delay(5);
+    break;
 
+    case 1:
     digitalWrite(A,  LOW);
     digitalWrite(B,  HIGH);
     digitalWrite(A_, LOW);
+    digitalWrite(B_, LOW);
+    break;
+
+    case 2:
+    digitalWrite(A,  LOW);
+    digitalWrite(B,  LOW);
+    digitalWrite(A_, HIGH);
+    digitalWrite(B_, LOW);
+    break;
+
+    case 3:
+    digitalWrite(A,  LOW);
+    digitalWrite(B,  LOW);
+    digitalWrite(A_, LOW);
     digitalWrite(B_, HIGH);
-    delay(5);
+    break;
+    }
+    nextPhase();  
+
   }
-  Serial.print("➡ stepper dir="); Serial.println(dir);
-}
+
+float spd=0;
+int unsignedSpeed;
+static unsigned long tCmd = 0, tSens = 0, tStp = 0;
 
 void fetchAndRunCommands() {
+  unsigned long now = millis();
+
   String resp;
   String path = String("/api/arduino/commands?mac=") + MAC_STR;
   if (!httpRequest("GET", path, "", resp)) {
     Serial.println("❌ GET commands failed");
     return;
+  }
+  if(now - tStp > spd)
+  {
+    tStp = now;
+    updateStepper();
   }
 
   if (resp.length() == 0) return;
@@ -172,7 +226,6 @@ void fetchAndRunCommands() {
 
 void setup() {
   Serial.begin(9600);
-
   Ethernet.init(53); // CS روی Mega = 53
   Ethernet.begin(macHW, ip, gw, gw);
   delay(1000);
@@ -184,8 +237,11 @@ void setup() {
 }
 
 void loop() {
-  static unsigned long tCmd = 0, tSens = 0;
   unsigned long now = millis();
+
+  if(speed >= 0) unsignedSpeed = speed;
+  else unsignedSpeed = speed * -1;
+  spd = 530 - (unsignedSpeed*50);
 
   // هر 2 ثانیه: دریافت فرمان
   if (now - tCmd > 2000) {
@@ -194,8 +250,15 @@ void loop() {
   }
 
   // هر 10 ثانیه: ارسال داده تستی
-  if (now - tSens > 10000) {
+  if (now - tSens > 3010) {
     tSens = now;
-    postSensorMock();
+    postSensorDHT();
   }
+
+  if(now - tStp > spd)
+  {
+    tStp = now;
+    updateStepper();
+  }
+
 }

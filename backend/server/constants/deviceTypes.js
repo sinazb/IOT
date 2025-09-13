@@ -17,7 +17,7 @@ module.exports = [
     },
     {
       deviceType: "relay",
-      pinNames: ["RLNo", "RLCOM", "RLNC", "RL"]
+      pinNames: ["RL"]
     }
   ];
   
